@@ -32,6 +32,7 @@ RUN source assets/functions/00-container && \
                     && \
     \
     package install .parsedmarc-run-deps \
+                    libffi \
                     py3-six \
                     py3-parsing \
                     python3 \
