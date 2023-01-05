@@ -1,0 +1,243 @@
+#!/command/with-contenv bash
+
+bootstrap_filesystem() {
+    if [ ! -d "${CONFIG_PATH}" ] ; then
+        mkdir -p "${CONFIG_PATH}"
+    fi
+    if [ "$(stat -c %U "${CONFIG_PATH}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${CONFIG_PATH}" ; fi
+
+    if [ ! -d "${DATA_PATH}" ] ; then
+        mkdir -p "${DATA_PATH}"
+    fi
+    if [ "$(stat -c %U "${DATA_PATH}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${DATA_PATH}" ; fi
+
+    if [ ! -d "${LOG_PATH}" ] ; then
+        mkdir -p "${LOG_PATH}"
+    fi
+    if [ "$(stat -c %U "${LOG_PATH}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${LOG_PATH}" ; fi
+
+    if [ ! -d "${INPUT_PATH}" ] ; then
+        mkdir -p "${INPUT_PATH}"
+    fi
+    if [ "$(stat -c %U "${INPUT_PATH}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${INPUT_PATH}" ; fi
+
+    if [ ! -d "${OUTPUT_PATH}" ] ; then
+        mkdir -p "${OUTPUT_PATH}"
+    fi
+    if [ "$(stat -c %U "${OUTPUT_PATH}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${OUTPUT_PATH}" ; fi
+
+    if [ ! -f "${AGGREGATE_CSV_FILE}" ] ; then
+        touch "${OUTPUT_PATH}"/"${AGGREGATE_CSV_FILE}"
+    fi
+    if [ "$(stat -c %U "${OUTPUT_PATH}"/"${AGGREGATE_CSV_FILE}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${OUTPUT_PATH}"/"${AGGREGATE_CSV_FILE}" ; fi
+
+    if [ ! -f "${AGGREGATE_JSON_FILE}" ] ; then
+        touch "${OUTPUT_PATH}"/"${AGGREGATE_JSON_FILE}"
+    fi
+    if [ "$(stat -c %U "${OUTPUT_PATH}"/"${AGGREGATE_JSON_FILE}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${OUTPUT_PATH}"/"${AGGREGATE_JSON_FILE}" ; fi
+
+    if [ ! -f "${FORENSIC_CSV_FILE}" ] ; then
+        touch "${OUTPUT_PATH}"/"${FORENSIC_CSV_FILE}"
+    fi
+    if [ "$(stat -c %U "${OUTPUT_PATH}"/"${FORENSIC_CSV_FILE}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${OUTPUT_PATH}"/"${FORENSIC_CSV_FILE}" ; fi
+
+    if [ ! -f "${FORENSIC_JSON_FILE}" ] ; then
+        touch "${OUTPUT_PATH}"/"${FORENSIC_JSON_FILE}"
+    fi
+    if [ "$(stat -c %U "${OUTPUT_PATH}"/"${FORENSIC_JSON_FILE}")" != "parsedmarc" ] ; then chown parsedmarc:parsedmarc "${OUTPUT_PATH}"/"${FORENSIC_JSON_FILE}" ; fi
+}
+
+configure_parsedmarc() {
+    if [ "${SETUP_TYPE,,}" = "auto" ] || [ ! -f "${CONFIG_PATH}"/"${CONFIG_FILE}" ] ; then
+
+        # General Settings
+        # save_aggregate - bool: Save aggregate report data to Elasticsearch, Splunk and/or S3
+        # save_forensic - bool: Save forensic report data to Elasticsearch, Splunk and/or S3
+        # strip_attachment_payloads - bool: Remove attachment payloads from results
+        # output - str: Directory to place JSON and CSV files in
+        # aggregate_json_filename - str: filename for the aggregate JSON output file
+        # forensic_json_filename - str: filename for the forensic JSON output file
+        # ip_db_path - str: An optional custom path to a MMDB file
+        # from MaxMind or DBIP
+        # offline - bool: Do not use online queries for geolocation or DNS
+        # nameservers - str: A comma separated list of DNS resolvers (Default: Cloudflare's public resolvers)
+        # dns_timeout - float: DNS timeout period
+        # debug - bool: Print debugging messages
+        # silent - bool: Only print errors (Default: True)
+        # log_file - str: Write log messages to a file at this path
+        # n_procs - int: Number of process to run in parallel when parsing in CLI mode (Default: 1)
+        # chunk_size - int: Number of files to give to each process when running in parallel.
+        # :::{note} Setting this to a number larger than one can improve performance when processing thousands of files :::
+        general_options="$(cat <<EOGENERAL
+[general]
+save_aggregate = ${REPORTS_SAVE_AGGREGATE,,}
+save_forensic = ${REPORTS_SAVE_FORENSIC,,}
+dns_timeout = ${TIMEOUT_DNS}
+log_file = ${LOG_PATH}/${LOG_FILE}
+nameservers = ${NAMESERVERS}
+output = ${OUTPUT_PATH}
+aggregate_json_filename = ${AGGREGATE_JSON_FILE}
+forensic_json_filename = ${FORENSIC_JSON_FILE}
+debug = ${DEBUG_MODE,,}
+EOGENERAL
+                        )"
+
+        # Mailbox Settings
+        # reports_folder - str: The mailbox folder (or label for Gmail) where the incoming reports can be found (Default: INBOX)
+        # archive_folder - str: The mailbox folder (or label for Gmail) to sort processed emails into (Default: Archive)
+        # watch - bool: Use the IMAP IDLE command to process
+        # messages as they arrive or poll MS Graph for new messages
+        # delete - bool: Delete messages after processing them,
+        # instead of archiving them
+        # test - bool: Do not move or delete messages
+        # batch_size - int: Number of messages to read and process before saving. Default 10. Use 0 for no limit.
+        # check_timeout - int: Number of seconds to wait for a IMAP IDLE response or the number of seconds until the next mail check (Default: 30)
+        mailbox_options="$(cat << EOMAILBOX
+[mailbox]
+reports_folder = {$MAILBOX_REPORTS_FOLDER}
+archive_folder = ${MAILBOX_ARCHIVE_FOLDER}
+watch = ${MAILBOX_WATCH,,}
+delete = ${MAILBOX_DELETE_AFTER_PROCESSING,,}
+test = ${MAILBOX_TEST_MODE,,}
+batch_size = ${MAILBOX_BATCH_SIZE}
+check_timeout = ${MAILBOX_CHECK_INTERVAL}
+EOMAILBOX
+                        )"
+
+        if var_true "${ENABLE_IMAP}" ; then
+            sanity_var IMAP_HOST "hostname of IMAP server"
+            sanity_var IMAP_USER "username on IMAP server"
+            sanity_var IMAP_PASS "password of IMAP user"
+
+            ## host - str: The IMAP server hostname or IP address
+            ## port - int: The IMAP server port (Default: 993)
+            ## :::{note} % characters must be escaped with another % character, so use %% wherever a % character is used. :::
+            ## :::{note} Starting in version 8.0.0, most options from the imap section have been moved to the mailbox section. :::
+            ## :::{note} If your host recommends another port, still try 993 :::
+            ## ssl - bool: Use an encrypted SSL/TLS connection (Default: True)
+            ## skip_certificate_verification - bool: Skip certificate verification (not recommended)
+            ## user - str: The IMAP user
+            ## password - str: The IMAP password
+
+            imap_options="$(cat << EOIMAP
+[imap]
+host = ${IMAP_HOST}
+user = ${IMAP_USER}
+password = ${IMAP_PASS}
+EOIMAP
+                        )"
+        fi
+        if var_true "${ENABLE_MSGRAPH}" ; then
+            # Sponsor me for this feature
+            # auth_method - str: Authentication method, valid types are UsernamePassword, DeviceCode, or ClientSecret (Default: UsernamePassword).
+            # user - str: The M365 user, required when the auth method is UsernamePassword
+            # password - str: The user password, required when the auth method is UsernamePassword
+            # client_id - str: The app registration's client ID
+            # client_secret - str: The app registration's secret
+            # tenant_id - str: The Azure AD tenant ID. This is required for all auth methods except UsernamePassword.
+            # mailbox - str: The mailbox name. This defaults to the current user if using the UsernamePassword auth method, but could be a shared mailbox if the user has access to the mailbox
+            # token_file - str: Path to save the token file (Default: .token)
+            # allow_unencrypted_storage - bool: Allows the Azure Identity module to fall back to unencrypted token cache (Default: False). Even if enabled, the cache will always try encrypted storage first.
+            :
+        fi
+
+        if var_true "${ENABLE_ELASTICSEARCH}" ; then
+            # Sponsor me for this feature
+            # hosts - str: A comma separated list of hostnames and ports or URLs (e.g. 127.0.0.1:9200 or https://user:secret@localhost)
+            # :::{note} Special characters in the username or password must be URL encoded. :::
+            # ssl - bool: Use an encrypted SSL/TLS connection (Default: True)
+            # cert_path - str: Path to a trusted certificates
+            # index_suffix - str: A suffix to apply to the index names
+            # monthly_indexes - bool: Use monthly indexes instead of daily indexes
+            # number_of_shards - int: The number of shards to use when creating the index (Default: 1)
+            # number_of_replicas - int: The number of replicas to use when creating the index (Default: 0)
+            :
+        fi
+
+        if var_true "${ENABLE_SPLUNK}" ; then
+            # Sponsor me for this feature
+            # url - str: The URL of the Splunk HTTP Events Collector (HEC)
+            # token - str: The HEC token
+            # index - str: The Splunk index to use
+            # skip_certificate_verification - bool: Skip certificate verification (not recommended)
+            :
+        fi
+
+        if var_true "${ENABLE_KAFKA}" ; then
+            # Sponsor me for this feature
+            # hosts - str: A comma separated list of Kafka hosts
+            # user - str: The Kafka user
+            # passsword - str: The Kafka password
+            # ssl - bool: Use an encrypted SSL/TLS connection (Default: True)
+            # skip_certificate_verification - bool: Skip certificate verification (not recommended)
+            # aggregate_topic - str: The Kafka topic for aggregate reports
+            # forensic_topic - str: The Kafka topic for forensic reports
+            :
+        fi
+
+        if var_true "${ENABLE_S3}" ; then
+            # Sponsor me for this feature
+            # bucket - str: The S3 bucket name
+            # path - str: The path to upload reports to (Default: /)
+            # region_name - str: The region name (Optional)
+            # endpoint_url - str: The endpoint URL (Optional)
+            # access_key_id - str: The access key id (Optional)
+            # secret_access_key - str: The secret access key (Optional)
+            :
+        fi
+
+        if var_true "${ENABLE_SMTP}" ; then
+            # Sponsor me for this feature
+            # host - str: The SMTP hostname
+            # port - int: The SMTP port (Default: 25)
+            # ssl - bool: Require SSL/TLS instead of using STARTTLS
+            # skip_certificate_verification - bool: Skip certificate verification (not recommended)
+            # user - str: the SMTP username
+            # password - str: the SMTP password
+            # from - str: The From header to use in the email
+            # to - list: A list of email addresses to send to
+            # subject - str: The Subject header to use in the email (Default: parsedmarc report)
+            # attachment - str: The ZIP attachment filenames
+            # message - str: The email message (Default: Please see the attached parsedmarc report.)
+            # :::{note} % characters must be escaped with another % character, so use %% wherever a % character is used. :::
+            :
+        fi
+
+        if var_true "${ENABLE_GMAIL_API}" ; then
+            # Sponsor me for this feature
+            # credentials_file - str: Path to file containing the credentials, None to disable (Default: None)
+            # token_file - str: Path to save the token file (Default: .token)
+            # include_spam_trash - bool: Include messages in Spam and Trash when searching reports (Default: False)
+            # scopes - str: Comma separated list of scopes to use when acquiring credentials (Default: https://www.googleapis.com/auth/gmail.modify)
+            # oauth2_port - int: The TCP port for the local server to listen on for the OAuth2 response (Default: 8080)
+            :
+        fi
+
+        if var_true "${ENABLE_SYSLOG}" ; then
+            # Sponsor me for this feature
+            # server - str: The Syslog server name or IP address
+            # port - int: The UDP port to use (Default: 514)
+            :
+        fi
+set -x
+        cat <<EOCONFIG | silent sudo -u parsedmarc tee "${CONFIG_PATH}"/"${CONFIG_FILE}"
+## Custom Generated ParseDMARC $(parsedmarc -v) Configuration! Do not edit, instead set ENV Vars
+## If you want to use your own configuration files set SETUP_TYPE=MANUAL when starting container
+## Last Generated on $(TZ=${TIMEZONE} date +'%Y-%m-%d %H:%M:%S %Z')
+
+${general_options}
+${mailbox_options}
+${imap_options}
+${msgraph_options}
+${elasticsearch_options}
+${splunk_options}
+${kafka_options}
+${s3_options}
+${smtp_options}
+${syslog_options}
+${gmail_api_options}
+EOCONFIG
+    else
+        :
+    fi
+}

@@ -1,0 +1,15 @@
+#!/command/with-contenv bash
+
+source /assets/functions/00-container
+PROCESS_NAME="parsedmarc"
+prepare_service defaults single
+
+check_container_initialized
+check_service_initialized init
+
+liftoff
+
+print_start "Starting Parsedmarc $(parsedmarc --version)"
+s6-setuidgid parsedmarc \
+                        exec parsedmarc \
+                            -c "${CONFIG_PATH}"/"${CONFIG_FILE}" ${PARSEDMARC_OPTS}
