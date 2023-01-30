@@ -56,7 +56,7 @@ docker pull docker.io/tiredofdit/parsedmarc:(imagetag)
 Builds of the image are also available on the [Github Container Registry](https://github.com/tiredofit/docker-parsedmarc/pkgs/container/docker-parsedmarc) 
  
 ```
-docker pull ghcr.io/tiredofit/docker-parsedmarc/pkgs/container/docker-parsedmarc):(imagetag)
+docker pull ghcr.io/tiredofit/docker-parsedmarc:(imagetag)
 ``` 
 
 The following image tags are available along with their tagged release based on what's written in the [Changelog](CHANGELOG.md):
