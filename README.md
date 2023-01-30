@@ -48,11 +48,17 @@ This will build a Docker Image for [ParseDMARC](https://domainaware.github.io/pa
 Clone this repository and build the image with `docker build -t (imagename) .`
 
 ### Prebuilt Images
-Builds of the image are available on [Docker Hub](https://hub.docker.com/r/tiredofit/parsedmarc) and is the recommended method of installation.
+Builds of the image are available on [Docker Hub](https://hub.docker.com/r/tiredofit/parsedmarc)
 
 ```bash
-docker pull tiredofit/parsedmarc:(imagetag)
+docker pull docker.io/tiredofdit/parsedmarc:(imagetag)
 ```
+Builds of the image are also available on the [Github Container Registry](https://github.com/tiredofit/docker-parsedmarc/pkgs/container/docker-parsedmarc) 
+ 
+```
+docker pull ghcr.io/tiredofit/docker-parsedmarc/pkgs/container/docker-parsedmarc):(imagetag)
+``` 
+
 The following image tags are available along with their tagged release based on what's written in the [Changelog](CHANGELOG.md):
 
 | Container OS | Tag       |
