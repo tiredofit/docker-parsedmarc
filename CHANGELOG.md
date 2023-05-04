@@ -1,3 +1,9 @@
+## 0.0.2 2023-05-04 <dave at tiredofit dot ca>
+
+   ### Added
+      - ParseDMARC 8.5.0
+
+
 ## 0.0.1 2023-01-05 <dave at tiredofit dot ca>
 
    ### Added
